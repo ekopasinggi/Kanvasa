@@ -1,0 +1,129 @@
+<resources>
+    <string name="app_name">Kanvasa</string>
+
+    <!-- Gallery Screen -->
+    <string name="gallery_subtitle">Studio Catatan Kanvas Tak Terbatas</string>
+    <string name="search_boards_placeholder">Cari judul catatan…</string>
+    <string name="new_canvas_button">Kanvas Baru</string>
+    <string name="empty_gallery_title">Mulai Papan Kanvas Pertama Anda</string>
+    <string name="empty_gallery_desc">Tulis tangan secara bebas, tempelkan gambar referensi, sticky note, atau buat diagram tanpa batas halaman.</string>
+    <string name="create_first_canvas">Buat Kanvas Sekarang</string>
+    <string name="no_search_results_title">Catatan Tidak Ditemukan</string>
+    <string name="no_search_results_desc">Coba kata kunci lain atau buat kanvas baru.</string>
+    <string name="board_elements_count">%1$d elemen</string>
+    <string name="board_empty_label">Kanvas kosong</string>
+    <string name="pattern_dots">Titik</string>
+    <string name="pattern_grid">Kotak</string>
+    <string name="pattern_blank">Polos</string>
+
+    <!-- Board Dialogs -->
+    <string name="dialog_new_board_title">Buat Kanvas Baru</string>
+    <string name="dialog_rename_board_title">Ubah Judul Kanvas</string>
+    <string name="board_title_label">Judul Catatan</string>
+    <string name="board_title_placeholder">Misal: Ide Produk, Catatan Kuliah…</string>
+    <string name="board_pattern_label">Pola Latar Kanvas</string>
+    <string name="action_create">Buat</string>
+    <string name="action_save">Simpan</string>
+    <string name="action_cancel">Batal</string>
+    <string name="action_delete">Hapus</string>
+    <string name="action_rename">Ubah Judul</string>
+    <string name="action_duplicate">Duplikat</string>
+    <string name="action_bring_front">Ke Depan</string>
+    <string name="action_edit_text">Edit Teks</string>
+    <string name="delete_board_confirm_title">Hapus Kanvas Ini?</string>
+    <string name="delete_board_confirm_desc">Catatan \"%1$s\" beserta seluruh gambar dan goresan di dalamnya akan dihapus secara permanen dari perangkat.</string>
+
+    <!-- Canvas Top Bar & Navigation -->
+    <string name="cd_back_to_gallery">Kembali ke galeri catatan</string>
+    <string name="cd_undo">Urungkan langkah terakhir</string>
+    <string name="cd_redo">Ulangi langkah</string>
+    <string name="cd_canvas_pattern">Ubah pola latar kanvas</string>
+    <string name="cd_export_canvas">Ekspor catatan ke PDF atau Gambar</string>
+    <string name="cd_reset_zoom">Pusatkan tampilan kanvas</string>
+    <string name="export_button_label">Ekspor</string>
+    <string name="fit_canvas_label">Pusatkan</string>
+
+    <!-- Canvas Tools -->
+    <string name="tool_pan">Geser</string>
+    <string name="tool_select">Seleksi</string>
+    <string name="tool_pen">Pena</string>
+    <string name="tool_highlighter">Stabilo</string>
+    <string name="tool_eraser">Hapus</string>
+    <string name="tool_shape">Bentuk</string>
+    <string name="tool_text">Teks</string>
+    <string name="tool_sticky">Sticky</string>
+    <string name="tool_image">Gambar</string>
+
+    <!-- Shape Subtypes -->
+    <string name="shape_rectangle">Kotak</string>
+    <string name="shape_circle">Lingkaran</string>
+    <string name="shape_line">Garis</string>
+    <string name="shape_arrow">Panah</string>
+
+    <!-- Text & Sticky Note Editor -->
+    <string name="editor_add_text_title">Tambah Kotak Teks</string>
+    <string name="editor_edit_text_title">Edit Kotak Teks</string>
+    <string name="editor_add_sticky_title">Tambah Sticky Note</string>
+    <string name="editor_edit_sticky_title">Edit Sticky Note</string>
+    <string name="editor_text_placeholder">Tulis catatan atau ide Anda di sini…</string>
+    <string name="editor_sticky_color_label">Warna Kartu Sticky</string>
+    <string name="editor_text_color_label">Warna Teks</string>
+    <string name="editor_font_size_label">Ukuran Teks</string>
+    <string name="font_size_small">Kecil</string>
+    <string name="font_size_medium">Sedang</string>
+    <string name="font_size_large">Besar</string>
+
+    <!-- Export Sheet -->
+    <string name="export_sheet_title">Ekspor Catatan Kanvas</string>
+    <string name="export_format_label">Format Berkas</string>
+    <string name="export_format_pdf">Dokumen PDF</string>
+    <string name="export_format_png">Gambar PNG</string>
+    <string name="export_scope_label">Area Kanvas yang Diekspor</string>
+    <string name="export_scope_full">Seluruh Isi Catatan</string>
+    <string name="export_scope_full_desc">Otomatis mencakup semua goresan, teks, dan gambar</string>
+    <string name="export_scope_viewport">Tampilan Layar Aktif</string>
+    <string name="export_scope_viewport_desc">Hanya area kanvas yang terlihat di layar saat ini</string>
+    <string name="export_preview_label">Pratinjau Hasil Ekspor</string>
+    <string name="export_save_device">Simpan ke Perangkat</string>
+    <string name="export_share_now">Bagikan</string>
+    <string name="export_success_saved">Berhasil menyimpan %1$s ke perangkat</string>
+    <string name="export_error_message">Gagal mengekspor catatan. Silakan coba lagi.</string>
+    <string name="image_import_error">Gagal memuat gambar yang dipilih.</string>
+    <string name="canvas_hint_tap_text">Ketuk di mana saja pada kanvas untuk menempatkan %1$s</string>
+    <string name="default_board_title">Catatan Tanpa Judul</string>
+
+    <!-- Brush & Eraser Sizes -->
+    <string name="eraser_size_label">Ukuran Hapus:</string>
+    <string name="pen_size_label">Ukuran:</string>
+    <string name="size_s">Kecil</string>
+    <string name="size_m">Sedang</string>
+    <string name="size_l">Besar</string>
+    <string name="size_xl">Ekstra</string>
+
+    <!-- Image Cropper -->
+    <string name="action_crop_image">Potong</string>
+    <string name="crop_dialog_title">Potong Gambar</string>
+    <string name="crop_mode_rectangle">Persegi Panjang</string>
+    <string name="crop_mode_custom">Custom (Bebas)</string>
+    <string name="crop_rect_hint">Seret sudut untuk mengatur batas kotak atau geser bagian tengah</string>
+    <string name="crop_custom_hint">Gambar garis melingkari area gambar yang ingin dipertahankan</string>
+    <string name="crop_reset_area">Ulangi Area</string>
+    <string name="crop_apply">Terapkan</string>
+    <string name="crop_error_empty_path">Gambar area potong bebas terlebih dahulu pada gambar.</string>
+    <string name="crop_error_failed">Gagal memotong gambar. Coba area yang lebih besar.</string>
+
+    <!-- Stylus & Palm Rejection -->
+    <string name="cd_palm_rejection_menu">Pengaturan tolak sentuhan tangan (Stylus)</string>
+    <string name="palm_mode_menu_title">Mode Sentuhan &amp; Stylus</string>
+    <string name="palm_mode_auto">Otomatis (Saat Pakai Stylus)</string>
+    <string name="palm_mode_auto_desc">Stylus menggambar; 1 jari geser kanvas &amp; 2 jari zoom</string>
+    <string name="palm_mode_stylus_only">Hanya Stylus (Geser 1 Jari)</string>
+    <string name="palm_mode_stylus_only_desc">Jari tidak mencoret; 1 jari menggeser &amp; 2 jari zoom</string>
+    <string name="palm_mode_off">Bebas (Jari &amp; Stylus)</string>
+    <string name="palm_mode_off_desc">Menggambar bebas memakai jari maupun stylus</string>
+    <string name="palm_auto_activated_snackbar">Stylus terdeteksi — geser kanvas dengan 1 jari, zoom 2 jari</string>
+    <string name="palm_stylus_only_snackbar">Mode Stylus aktif — 1 jari menggeser kanvas, stylus untuk menggambar</string>
+    <string name="palm_off_snackbar">Mode Bebas aktif — jari dan stylus dapat digunakan</string>
+    <string name="cd_eraser_size_option">Ukuran penghapus %1$s</string>
+    <string name="cd_brush_size_option">Ukuran goresan %1$s</string>
+</resources>

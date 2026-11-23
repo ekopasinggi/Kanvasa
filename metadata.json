@@ -1,0 +1,6 @@
+{
+  "name": "Kanvasa",
+  "description": "Aplikasi catatan kanvas tak terbatas (infinite canvas) dengan dukungan tulisan tangan bebas, gambar, sticky note, diagram bentuk, dan ekspor ke PDF maupun gambar PNG.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
