@@ -126,4 +126,24 @@
     <string name="palm_off_snackbar">Mode Bebas aktif — jari dan stylus dapat digunakan</string>
     <string name="cd_eraser_size_option">Ukuran penghapus %1$s</string>
     <string name="cd_brush_size_option">Ukuran goresan %1$s</string>
+
+    <!-- Stylus Shortcuts & Calibration -->
+    <string name="stylus_cue_eraser">Penghapus</string>
+    <string name="stylus_cue_temp_eraser">Penghapus Sementara</string>
+    <string name="stylus_cue_pen">Pena</string>
+    <string name="stylus_cue_highlighter">Stabilo</string>
+    <string name="stylus_calibrate_menu_title">Kalibrasi Shortcut Stylus</string>
+    <string name="stylus_calibrate_menu_default">Bawaan aktif (ketuk sisi / tombol stylus)</string>
+    <string name="stylus_calibrate_menu_custom">Tersimpan: %1$s</string>
+    <string name="stylus_calibrate_dialog_title">Kalibrasi Shortcut Stylus</string>
+    <string name="stylus_calibrate_dialog_desc">Ketuk dua kali sisi M-Pencil atau tekan tombol sisi stylus sekarang untuk merekam sinyalnya sebagai shortcut tukar Pena ↔ Penghapus.</string>
+    <string name="stylus_calibrate_waiting">Menunggu sinyal ketukan atau tombol stylus…</string>
+    <string name="stylus_calibrate_detected">Sinyal terdeteksi: %1$s</string>
+    <string name="stylus_calibrate_current">Pengaturan saat ini: %1$s</string>
+    <string name="stylus_calibrate_matepad_tip">Tips Huawei MatePad: pastikan Pengaturan &gt; Fitur aksesibilitas &gt; Stylus &gt; Ketuk dua kali &amp; FreeScript dalam keadaan aktif. Jika HarmonyOS menahan ketukan di level sistem, Anda tetap dapat memakai tombol tahan hapus atau ganti alat dari bilah atas.</string>
+    <string name="stylus_calibrate_reset">Reset Bawaan</string>
+    <string name="stylus_calibrate_close">Tutup</string>
+    <string name="stylus_calibrate_saved_snackbar">Shortcut stylus disimpan: %1$s</string>
+    <string name="stylus_calibrate_reset_snackbar">Shortcut stylus dikembalikan ke bawaan</string>
 </resources>
+

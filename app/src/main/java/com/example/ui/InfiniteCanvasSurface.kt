@@ -110,6 +110,9 @@ fun InfiniteCanvasSurface(
     onTapPlaceNote: (worldX: Float, worldY: Float, isSticky: Boolean) -> Unit,
     onEditTextElement: (CanvasElement.TextNote) -> Unit,
     onStylusDetected: () -> Unit,
+    isStylusButtonHeldProvider: () -> Boolean = { false },
+    onTemporaryEraserChange: (Boolean) -> Unit = {},
+    onStylusTouchStateChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -154,6 +157,9 @@ fun InfiniteCanvasSurface(
     val latestTapPlaceNote by rememberUpdatedState(onTapPlaceNote)
     val latestEditTextElement by rememberUpdatedState(onEditTextElement)
     val latestOnStylusDetected by rememberUpdatedState(onStylusDetected)
+    val latestIsStylusButtonHeld by rememberUpdatedState(isStylusButtonHeldProvider)
+    val latestOnTemporaryEraserChange by rememberUpdatedState(onTemporaryEraserChange)
+    val latestOnStylusTouchStateChange by rememberUpdatedState(onStylusTouchStateChange)
 
     Box(modifier = modifier.fillMaxSize()) {
         // Layer A (Bottom): GPU-cached committed scene.
@@ -261,6 +267,22 @@ fun InfiniteCanvasSurface(
                         var totalSingleDragPx = 0f
                         var selectAction = SelectGestureAction.NONE
                         var tappedCandidateNote: CanvasElement.TextNote? = null
+                        var isTemporaryEraserActive = false
+
+                        fun resolveStylusEffectiveTool(pointer: PointerInputChange): Pair<CanvasTool, Boolean> {
+                            val buttonOrTailErase =
+                                pointer.type == PointerType.Eraser || latestIsStylusButtonHeld()
+                            val isTemp = buttonOrTailErase && latestTool != CanvasTool.ERASER
+                            val tool = if (buttonOrTailErase) CanvasTool.ERASER else latestTool
+                            return tool to isTemp
+                        }
+
+                        fun updateTemporaryEraserFlag(active: Boolean) {
+                            if (isTemporaryEraserActive != active) {
+                                isTemporaryEraserActive = active
+                                latestOnTemporaryEraserChange(active)
+                            }
+                        }
 
                         fun smoothStylusPressure(rawPressure: Float, prev: Float): Float {
                             val safeRaw = if (rawPressure > 0.005f) {
@@ -596,9 +618,10 @@ fun InfiniteCanvasSurface(
                             down.isStylusLike() -> {
                                 stylusHoverTracker.lastStylusActivityMs = SystemClock.uptimeMillis()
                                 latestOnStylusDetected()
+                                latestOnStylusTouchStateChange(true)
                                 channel = GestureChannel.STYLUS
-                                val effectiveTool =
-                                    if (down.type == PointerType.Eraser) CanvasTool.ERASER else latestTool
+                                val (effectiveTool, isTempErase) = resolveStylusEffectiveTool(down)
+                                updateTemporaryEraserFlag(isTempErase)
                                 beginToolAction(down, effectiveTool)
                             }
                             down.type == PointerType.Mouse -> {
@@ -645,6 +668,7 @@ fun InfiniteCanvasSurface(
                                 // Stylus ALWAYS takes absolute priority over any finger/palm touch!
                                 stylusHoverTracker.lastStylusActivityMs = SystemClock.uptimeMillis()
                                 latestOnStylusDetected()
+                                latestOnStylusTouchStateChange(true)
 
                                 if (channel == GestureChannel.TOUCH_TOOL) {
                                     // Cancel any accidental palm stroke that started right before stylus landed
@@ -660,10 +684,13 @@ fun InfiniteCanvasSurface(
                                 }
 
                                 channel = GestureChannel.STYLUS
-                                val effectiveStylusTool =
-                                    if (stylusPointer.type == PointerType.Eraser) CanvasTool.ERASER else latestTool
+                                val (effectiveStylusTool, isTempErase) =
+                                    resolveStylusEffectiveTool(stylusPointer)
+                                updateTemporaryEraserFlag(isTempErase)
 
-                                if (activePointerId != stylusPointer.id) {
+                                if (activePointerId != stylusPointer.id ||
+                                    activeGestureTool != effectiveStylusTool
+                                ) {
                                     if (activePointerId != null) {
                                         finishToolAction()
                                     }
@@ -679,6 +706,8 @@ fun InfiniteCanvasSurface(
                                     // Commit the stylus stroke immediately and ignore remaining resting palm touches
                                     // until all pointers lift or the stylus lands again for the next stroke.
                                     stylusHoverTracker.lastStylusActivityMs = SystemClock.uptimeMillis()
+                                    latestOnStylusTouchStateChange(false)
+                                    updateTemporaryEraserFlag(false)
                                     if (activePointerId != null) {
                                         finishToolAction()
                                     }
@@ -775,6 +804,8 @@ fun InfiniteCanvasSurface(
                         }
 
                         // All pointers are up
+                        latestOnStylusTouchStateChange(false)
+                        updateTemporaryEraserFlag(false)
                         if ((channel == GestureChannel.STYLUS || channel == GestureChannel.TOUCH_TOOL) &&
                             activePointerId != null
                         ) {

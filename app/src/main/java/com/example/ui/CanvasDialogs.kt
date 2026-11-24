@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -65,10 +67,16 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import android.view.inputmethod.EditorInfo
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Tune
 import com.example.R
 import com.example.model.CanvasPattern
 import com.example.model.ExportFormat
 import com.example.model.ExportScope
+import com.example.model.StylusCustomBinding
+import com.example.model.StylusHardwareSignal
 import com.example.ui.theme.InkSwatches
 import com.example.ui.theme.StickyNoteSwatches
 import com.example.viewmodel.TextEditorDraft
@@ -96,12 +104,17 @@ fun BoardConfigDialog(
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                OutlinedTextField(
+                StylusFormField(
                     value = title,
                     onValueChange = { title = it },
-                    label = { Text(stringResource(R.string.board_title_label)) },
-                    placeholder = { Text(stringResource(R.string.board_title_placeholder)) },
+                    label = stringResource(R.string.board_title_label),
+                    placeholder = stringResource(R.string.board_title_placeholder),
                     singleLine = true,
+                    imeAction = EditorInfo.IME_ACTION_DONE,
+                    onImeAction = {
+                        val finalTitle = title.trim().ifBlank { "Catatan Baru" }
+                        onConfirm(finalTitle, selectedPattern)
+                    },
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -236,12 +249,14 @@ fun TextStickyEditorSheet(
                 style = MaterialTheme.typography.titleLarge
             )
 
-            OutlinedTextField(
+            StylusFormField(
                 value = text,
                 onValueChange = { text = it },
-                placeholder = { Text(stringResource(R.string.editor_text_placeholder)) },
-                minLines = 3,
+                placeholder = stringResource(R.string.editor_text_placeholder),
+                singleLine = false,
+                minLines = 4,
                 maxLines = 7,
+                minHeight = 132.dp,
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -674,3 +689,167 @@ private fun ScopeChoiceRow(
         }
     }
 }
+
+@Composable
+fun StylusCalibrationDialog(
+    currentBinding: StylusCustomBinding,
+    capturedSignal: StylusHardwareSignal?,
+    onSaveCaptured: (StylusCustomBinding) -> Unit,
+    onResetDefault: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    androidx.activity.compose.BackHandler(onBack = onDismiss)
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.45f))
+            .clickable(onClick = onDismiss)
+            .padding(24.dp)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = 6.dp,
+            shadowElevation = 10.dp,
+            modifier = Modifier
+                .widthIn(max = 480.dp)
+                .fillMaxWidth()
+                .clickable(enabled = false, onClick = {})
+        ) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.padding(24.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Tune,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = stringResource(R.string.stylus_calibrate_dialog_title),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                Text(
+                    text = stringResource(R.string.stylus_calibrate_dialog_desc),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (capturedSignal != null) {
+                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerLow
+                    },
+                    border = BorderStroke(
+                        width = if (capturedSignal != null) 1.5.dp else 1.dp,
+                        color = if (capturedSignal != null) {
+                            MaterialTheme.colorScheme.secondary
+                        } else {
+                            MaterialTheme.colorScheme.outlineVariant
+                        }
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (capturedSignal != null) {
+                                Icons.Default.CheckCircle
+                            } else {
+                                Icons.Default.Edit
+                            },
+                            contentDescription = null,
+                            tint = if (capturedSignal != null) {
+                                MaterialTheme.colorScheme.secondary
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            },
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = if (capturedSignal != null) {
+                                stringResource(
+                                    R.string.stylus_calibrate_detected,
+                                    capturedSignal.label
+                                )
+                            } else {
+                                stringResource(R.string.stylus_calibrate_waiting)
+                            },
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                if (currentBinding.isConfigured) {
+                    Text(
+                        text = stringResource(
+                            R.string.stylus_calibrate_current,
+                            currentBinding.label.ifBlank { "key=${currentBinding.keyCode}" }
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                Text(
+                    text = stringResource(R.string.stylus_calibrate_matepad_tip),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Row(
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp)
+                ) {
+                    if (currentBinding.isConfigured) {
+                        TextButton(
+                            onClick = onResetDefault,
+                            modifier = Modifier.testTag("stylus_calibrate_reset_button")
+                        ) {
+                            Text(stringResource(R.string.stylus_calibrate_reset))
+                        }
+                    }
+                    if (capturedSignal != null) {
+                        TextButton(onClick = onDismiss) {
+                            Text(stringResource(R.string.action_cancel))
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Button(
+                            onClick = { onSaveCaptured(capturedSignal.toCustomBinding()) },
+                            modifier = Modifier.testTag("stylus_calibrate_save_button")
+                        ) {
+                            Text(stringResource(R.string.action_save))
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Button(
+                            onClick = onDismiss,
+                            modifier = Modifier.testTag("stylus_calibrate_close_button")
+                        ) {
+                            Text(stringResource(R.string.stylus_calibrate_close))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

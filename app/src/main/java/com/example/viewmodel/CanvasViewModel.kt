@@ -21,6 +21,8 @@ import com.example.model.ExportScope
 import com.example.model.PalmRejectionMode
 import com.example.model.PointFData
 import com.example.model.ShapeKind
+import com.example.model.StylusCustomBinding
+import com.example.model.StylusShortcutPolicy
 import com.example.ui.theme.HighlighterSwatches
 import com.example.ui.theme.InkSwatches
 import com.example.ui.theme.StickyNoteSwatches
@@ -34,6 +36,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class TextEditorDraft(
     val editingElementId: String? = null,
@@ -46,6 +50,12 @@ data class TextEditorDraft(
     val isSticky: Boolean = false
 )
 
+data class ToolSwitchCue(
+    val tool: CanvasTool,
+    val isTemporary: Boolean = false,
+    val eventId: Long = 0L
+)
+
 data class CanvasUiState(
     val boardId: Long = 0L,
     val boardTitle: String = "",
@@ -54,6 +64,10 @@ data class CanvasUiState(
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
     val activeTool: CanvasTool = CanvasTool.PEN,
+    val lastDrawingTool: CanvasTool = CanvasTool.PEN,
+    val isTemporaryEraserActive: Boolean = false,
+    val toolSwitchCue: ToolSwitchCue? = null,
+    val customStylusBinding: StylusCustomBinding = StylusCustomBinding(),
     val penColorArgb: Long = InkSwatches.first(),
     val penStrokeWidth: Float = 5f,
     val highlighterColorArgb: Long = HighlighterSwatches.first(),
@@ -87,14 +101,19 @@ class CanvasViewModel(
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
-        CanvasUiState(palmRejectionMode = preferences.getPalmRejectionMode())
+        CanvasUiState(
+            palmRejectionMode = preferences.getPalmRejectionMode(),
+            customStylusBinding = preferences.getStylusCustomBinding()
+        )
     )
     val uiState: StateFlow<CanvasUiState> = _uiState.asStateFlow()
 
     private val undoStack = ArrayDeque<List<CanvasElement>>()
     private val redoStack = ArrayDeque<List<CanvasElement>>()
+    private val saveMutex = Mutex()
     private var autoSaveJob: Job? = null
     private var gestureSnapshotSaved = false
+    private var cueSequence = 0L
 
     val mediaStorage get() = repository.mediaStorage
 
@@ -105,27 +124,29 @@ class CanvasViewModel(
             undoStack.clear()
             redoStack.clear()
 
-            val entity = repository.getBoardById(boardId)
-            if (entity == null) {
+            val summary = runCatching { repository.getBoardSummaryById(boardId) }.getOrNull()
+            if (summary == null) {
                 _uiState.update { it.copy(isLoading = false) }
                 return@launch
             }
 
-            val decodedElements = repository.decodeElements(entity.elementsJson)
-            val pattern = CanvasPattern.fromName(entity.patternName)
+            val decodedElements = runCatching {
+                repository.loadBoardElements(boardId)
+            }.getOrDefault(emptyList())
+            val pattern = CanvasPattern.fromName(summary.patternName)
 
             _uiState.update {
                 it.copy(
-                    boardId = entity.id,
-                    boardTitle = entity.title,
+                    boardId = summary.id,
+                    boardTitle = summary.title,
                     pattern = pattern,
                     elements = decodedElements,
                     canUndo = false,
                     canRedo = false,
                     selectedElementId = null,
-                    cameraScale = entity.cameraScale.coerceIn(0.25f, 4.0f),
-                    cameraPanX = entity.cameraPanX,
-                    cameraPanY = entity.cameraPanY,
+                    cameraScale = summary.cameraScale.coerceIn(0.25f, 4.0f),
+                    cameraPanX = summary.cameraPanX,
+                    cameraPanY = summary.cameraPanY,
                     isLoading = false
                 )
             }
@@ -134,7 +155,9 @@ class CanvasViewModel(
                 .filterIsInstance<CanvasElement.ImageItem>()
                 .map { it.filePath }
             if (imagePaths.isNotEmpty()) {
-                val loaded = repository.mediaStorage.preloadBitmaps(imagePaths)
+                val loaded = runCatching {
+                    repository.mediaStorage.preloadBitmaps(imagePaths)
+                }.getOrDefault(0)
                 if (loaded > 0) {
                     _uiState.update { it.copy(bitmapVersion = it.bitmapVersion + 1) }
                 }
@@ -159,11 +182,68 @@ class CanvasViewModel(
 
     fun setActiveTool(tool: CanvasTool) {
         _uiState.update {
+            val updatedLastDrawing = if (tool == CanvasTool.PEN || tool == CanvasTool.HIGHLIGHTER) {
+                tool
+            } else {
+                it.lastDrawingTool
+            }
             it.copy(
                 activeTool = tool,
+                lastDrawingTool = updatedLastDrawing,
+                isTemporaryEraserActive = false,
                 selectedElementId = if (tool == CanvasTool.SELECT) it.selectedElementId else null
             )
         }
+    }
+
+    fun togglePenAndEraserFromStylus() {
+        _uiState.update { current ->
+            val (nextTool, rememberedDrawing) = StylusShortcutPolicy.resolveToggleTool(
+                activeTool = current.activeTool,
+                lastDrawingTool = current.lastDrawingTool
+            )
+            cueSequence++
+            current.copy(
+                activeTool = nextTool,
+                lastDrawingTool = rememberedDrawing,
+                isTemporaryEraserActive = false,
+                selectedElementId = null,
+                toolSwitchCue = ToolSwitchCue(
+                    tool = nextTool,
+                    isTemporary = false,
+                    eventId = cueSequence
+                )
+            )
+        }
+    }
+
+    fun setTemporaryEraserFromStylus(active: Boolean) {
+        _uiState.update { current ->
+            if (current.isTemporaryEraserActive == active) return@update current
+            if (active && current.activeTool != CanvasTool.ERASER) {
+                cueSequence++
+                current.copy(
+                    isTemporaryEraserActive = true,
+                    toolSwitchCue = ToolSwitchCue(
+                        tool = CanvasTool.ERASER,
+                        isTemporary = true,
+                        eventId = cueSequence
+                    )
+                )
+            } else {
+                current.copy(isTemporaryEraserActive = false)
+            }
+        }
+    }
+
+    fun saveCustomStylusBinding(binding: StylusCustomBinding) {
+        preferences.setStylusCustomBinding(binding)
+        _uiState.update { it.copy(customStylusBinding = binding) }
+    }
+
+    fun clearCustomStylusBinding() {
+        preferences.clearStylusCustomBinding()
+        _uiState.update { it.copy(customStylusBinding = StylusCustomBinding()) }
     }
 
     fun setPenColor(colorArgb: Long) {
@@ -305,7 +385,7 @@ class CanvasViewModel(
     private fun recordUndoSnapshot() {
         val current = _uiState.value.elements
         undoStack.addLast(current)
-        if (undoStack.size > 40) {
+        if (undoStack.size > 25) {
             undoStack.removeFirst()
         }
         redoStack.clear()
@@ -845,6 +925,13 @@ class CanvasViewModel(
         }
     }
 
+    fun flushPendingSaveAsync() {
+        autoSaveJob?.cancel()
+        viewModelScope.launch {
+            persistWorkspaceNow()
+        }
+    }
+
     fun flushAndExit(onSaved: () -> Unit) {
         autoSaveJob?.cancel()
         viewModelScope.launch {
@@ -854,17 +941,21 @@ class CanvasViewModel(
     }
 
     private suspend fun persistWorkspaceNow() {
-        val state = _uiState.value
-        if (state.boardId <= 0L || state.isLoading) return
-        repository.saveBoardWorkspace(
-            boardId = state.boardId,
-            title = state.boardTitle,
-            pattern = state.pattern,
-            elements = state.elements,
-            cameraScale = state.cameraScale,
-            cameraPanX = state.cameraPanX,
-            cameraPanY = state.cameraPanY
-        )
+        saveMutex.withLock {
+            val state = _uiState.value
+            if (state.boardId <= 0L || state.isLoading) return
+            runCatching {
+                repository.saveBoardWorkspace(
+                    boardId = state.boardId,
+                    title = state.boardTitle,
+                    pattern = state.pattern,
+                    elements = state.elements,
+                    cameraScale = state.cameraScale,
+                    cameraPanX = state.cameraPanX,
+                    cameraPanY = state.cameraPanY
+                )
+            }
+        }
     }
 
     private fun newElementId(prefix: String): String =

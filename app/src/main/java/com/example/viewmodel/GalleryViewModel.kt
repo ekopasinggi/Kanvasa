@@ -3,18 +3,20 @@ package com.example.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.data.NoteBoardEntity
+import com.example.data.NoteBoardSummary
 import com.example.data.NoteRepository
+import com.example.model.CanvasElement
 import com.example.model.CanvasPattern
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 data class GalleryUiState(
-    val boards: List<NoteBoardEntity> = emptyList(),
+    val boards: List<NoteBoardSummary> = emptyList(),
     val searchQuery: String = "",
     val totalBoardCount: Int = 0,
     val isLoading: Boolean = true
@@ -27,7 +29,7 @@ class GalleryViewModel(
     private val searchQueryFlow = MutableStateFlow("")
 
     val uiState: StateFlow<GalleryUiState> = combine(
-        repository.allBoards,
+        repository.allBoards.catch { emit(emptyList()) },
         searchQueryFlow
     ) { allBoards, query ->
         val trimmed = query.trim()
@@ -48,6 +50,12 @@ class GalleryViewModel(
         initialValue = GalleryUiState()
     )
 
+    suspend fun loadPreviewElements(board: NoteBoardSummary): List<CanvasElement> {
+        return runCatching {
+            repository.loadBoardPreview(board.id, board.elementCount)
+        }.getOrDefault(emptyList())
+    }
+
     fun onSearchQueryChange(newQuery: String) {
         searchQueryFlow.value = newQuery
     }
@@ -63,13 +71,13 @@ class GalleryViewModel(
         }
     }
 
-    fun renameBoard(board: NoteBoardEntity, newTitle: String, newPattern: CanvasPattern) {
+    fun renameBoard(board: NoteBoardSummary, newTitle: String, newPattern: CanvasPattern) {
         viewModelScope.launch {
             repository.renameBoard(board, newTitle, newPattern)
         }
     }
 
-    fun deleteBoard(board: NoteBoardEntity) {
+    fun deleteBoard(board: NoteBoardSummary) {
         viewModelScope.launch {
             repository.deleteBoard(board)
         }

@@ -342,6 +342,12 @@ private fun distanceToSegment(
 }
 
 object CanvasSerializer {
+    private fun safeDouble(value: Float, fallback: Double = 0.0): Double =
+        if (value.isFinite()) value.toDouble() else fallback
+
+    private fun safeRounded(value: Float, scale: Double, fallback: Double = 0.0): Double =
+        if (value.isFinite()) kotlin.math.round(value * scale) / scale else fallback
+
     fun encode(elements: List<CanvasElement>): String {
         val array = JSONArray()
         for (element in elements) {
@@ -351,38 +357,49 @@ object CanvasSerializer {
                 is CanvasElement.Stroke -> {
                     obj.put("type", "stroke")
                     obj.put("colorArgb", element.colorArgb)
-                    obj.put("strokeWidth", element.strokeWidth.toDouble())
+                    obj.put("strokeWidth", safeRounded(element.strokeWidth, 100.0, 4.0))
                     obj.put("isHighlighter", element.isHighlighter)
+                    val hasPressure = !element.isHighlighter && element.points.any { it.pressure.isFinite() && it.pressure >= 0f }
                     val pts = JSONArray()
-                    for (pt in element.points) {
-                        val pObj = JSONObject()
-                        pObj.put("x", kotlin.math.round(pt.x * 100.0) / 100.0)
-                        pObj.put("y", kotlin.math.round(pt.y * 100.0) / 100.0)
-                        if (pt.pressure >= 0f) {
-                            pObj.put("p", kotlin.math.round(pt.pressure * 1000.0) / 1000.0)
+                    if (hasPressure) {
+                        for (pt in element.points) {
+                            pts.put(safeRounded(pt.x, 100.0, 0.0))
+                            pts.put(safeRounded(pt.y, 100.0, 0.0))
+                            pts.put(
+                                if (pt.pressure.isFinite() && pt.pressure >= 0f) {
+                                    safeRounded(pt.pressure, 1000.0, 0.5)
+                                } else {
+                                    -1.0
+                                }
+                            )
                         }
-                        pts.put(pObj)
+                        obj.put("pts3", pts)
+                    } else {
+                        for (pt in element.points) {
+                            pts.put(safeRounded(pt.x, 100.0, 0.0))
+                            pts.put(safeRounded(pt.y, 100.0, 0.0))
+                        }
+                        obj.put("pts2", pts)
                     }
-                    obj.put("points", pts)
                 }
                 is CanvasElement.Shape -> {
                     obj.put("type", "shape")
                     obj.put("kind", element.kind.name)
-                    obj.put("startX", element.startX.toDouble())
-                    obj.put("startY", element.startY.toDouble())
-                    obj.put("endX", element.endX.toDouble())
-                    obj.put("endY", element.endY.toDouble())
+                    obj.put("startX", safeDouble(element.startX))
+                    obj.put("startY", safeDouble(element.startY))
+                    obj.put("endX", safeDouble(element.endX, 100.0))
+                    obj.put("endY", safeDouble(element.endY, 100.0))
                     obj.put("colorArgb", element.colorArgb)
-                    obj.put("strokeWidth", element.strokeWidth.toDouble())
+                    obj.put("strokeWidth", safeDouble(element.strokeWidth, 4.0))
                 }
                 is CanvasElement.TextNote -> {
                     obj.put("type", "text_note")
                     obj.put("text", element.text)
-                    obj.put("x", element.x.toDouble())
-                    obj.put("y", element.y.toDouble())
-                    obj.put("width", element.width.toDouble())
-                    obj.put("height", element.height.toDouble())
-                    obj.put("fontSizeSp", element.fontSizeSp.toDouble())
+                    obj.put("x", safeDouble(element.x))
+                    obj.put("y", safeDouble(element.y))
+                    obj.put("width", safeDouble(element.width, 220.0))
+                    obj.put("height", safeDouble(element.height, 140.0))
+                    obj.put("fontSizeSp", safeDouble(element.fontSizeSp, 18.0))
                     obj.put("textColorArgb", element.textColorArgb)
                     obj.put("cardColorArgb", element.cardColorArgb)
                     obj.put("isSticky", element.isSticky)
@@ -390,11 +407,11 @@ object CanvasSerializer {
                 is CanvasElement.ImageItem -> {
                     obj.put("type", "image")
                     obj.put("filePath", element.filePath)
-                    obj.put("x", element.x.toDouble())
-                    obj.put("y", element.y.toDouble())
-                    obj.put("width", element.width.toDouble())
-                    obj.put("height", element.height.toDouble())
-                    obj.put("aspectRatio", element.aspectRatio.toDouble())
+                    obj.put("x", safeDouble(element.x))
+                    obj.put("y", safeDouble(element.y))
+                    obj.put("width", safeDouble(element.width, 260.0))
+                    obj.put("height", safeDouble(element.height, 200.0))
+                    obj.put("aspectRatio", safeDouble(element.aspectRatio, 1.3))
                     obj.put("isCustomCutout", element.isCustomCutout)
                 }
             }
@@ -402,6 +419,42 @@ object CanvasSerializer {
         }
         return array.toString()
     }
+
+    /**
+     * Produces a lightweight downsampled subset of elements (max 24 items, max 28 pts/stroke)
+     * so gallery thumbnails load instantaneously with tiny memory footprint.
+     */
+    fun buildPreviewElements(elements: List<CanvasElement>): List<CanvasElement> {
+        if (elements.isEmpty()) return emptyList()
+        val maxItems = 24
+        val step = max(1, elements.size / maxItems)
+        val sampled = ArrayList<CanvasElement>(min(elements.size, maxItems))
+        var idx = 0
+        while (idx < elements.size && sampled.size < maxItems) {
+            val el = elements[idx]
+            if (el is CanvasElement.Stroke && el.points.size > 28) {
+                val pts = el.points
+                val pStep = max(1, pts.size / 26)
+                val reduced = ArrayList<PointFData>(28)
+                var pIdx = 0
+                while (pIdx < pts.size - 1) {
+                    val p = pts[pIdx]
+                    reduced.add(PointFData(p.x, p.y, -1f))
+                    pIdx += pStep
+                }
+                val last = pts.last()
+                reduced.add(PointFData(last.x, last.y, -1f))
+                sampled.add(el.copy(points = reduced))
+            } else {
+                sampled.add(el)
+            }
+            idx += step
+        }
+        return sampled
+    }
+
+    fun encodePreview(elements: List<CanvasElement>): String =
+        encode(buildPreviewElements(elements))
 
     fun decode(json: String): List<CanvasElement> {
         if (json.isBlank()) return emptyList()
@@ -413,23 +466,7 @@ object CanvasSerializer {
                 val id = obj.optString("id").ifBlank { "el_$i" }
                 when (obj.optString("type")) {
                     "stroke" -> {
-                        val ptsArr = obj.optJSONArray("points") ?: JSONArray()
-                        val pts = ArrayList<PointFData>(ptsArr.length())
-                        for (j in 0 until ptsArr.length()) {
-                            val p = ptsArr.optJSONObject(j) ?: continue
-                            val pressure = if (p.has("p")) {
-                                p.optDouble("p", -1.0).toFloat()
-                            } else {
-                                -1f
-                            }
-                            pts.add(
-                                PointFData(
-                                    x = p.optDouble("x", 0.0).toFloat(),
-                                    y = p.optDouble("y", 0.0).toFloat(),
-                                    pressure = pressure
-                                )
-                            )
-                        }
+                        val pts = decodeStrokePoints(obj)
                         if (pts.isNotEmpty()) {
                             result.add(
                                 CanvasElement.Stroke(
@@ -492,8 +529,66 @@ object CanvasSerializer {
                 }
             }
             result
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             emptyList()
         }
+    }
+
+    private fun decodeStrokePoints(obj: JSONObject): List<PointFData> {
+        val pts3 = obj.optJSONArray("pts3")
+        if (pts3 != null) {
+            val count = pts3.length() / 3
+            val list = ArrayList<PointFData>(count)
+            var i = 0
+            while (i + 2 < pts3.length()) {
+                list.add(
+                    PointFData(
+                        x = pts3.optDouble(i, 0.0).toFloat(),
+                        y = pts3.optDouble(i + 1, 0.0).toFloat(),
+                        pressure = pts3.optDouble(i + 2, -1.0).toFloat()
+                    )
+                )
+                i += 3
+            }
+            return list
+        }
+
+        val pts2 = obj.optJSONArray("pts2")
+        if (pts2 != null) {
+            val count = pts2.length() / 2
+            val list = ArrayList<PointFData>(count)
+            var i = 0
+            while (i + 1 < pts2.length()) {
+                list.add(
+                    PointFData(
+                        x = pts2.optDouble(i, 0.0).toFloat(),
+                        y = pts2.optDouble(i + 1, 0.0).toFloat(),
+                        pressure = -1f
+                    )
+                )
+                i += 2
+            }
+            return list
+        }
+
+        // Legacy object-array format: [{"x":..,"y":..,"p":..}]
+        val ptsArr = obj.optJSONArray("points") ?: return emptyList()
+        val pts = ArrayList<PointFData>(ptsArr.length())
+        for (j in 0 until ptsArr.length()) {
+            val p = ptsArr.optJSONObject(j) ?: continue
+            val pressure = if (p.has("p")) {
+                p.optDouble("p", -1.0).toFloat()
+            } else {
+                -1f
+            }
+            pts.add(
+                PointFData(
+                    x = p.optDouble("x", 0.0).toFloat(),
+                    y = p.optDouble("y", 0.0).toFloat(),
+                    pressure = pressure
+                )
+            )
+        }
+        return pts
     }
 }

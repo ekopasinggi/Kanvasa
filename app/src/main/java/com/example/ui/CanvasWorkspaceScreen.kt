@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.content.Intent
+import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -8,6 +9,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
@@ -62,6 +65,7 @@ import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.StickyNote2
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
 import androidx.compose.material.icons.outlined.Rectangle
 import androidx.compose.material3.Button
@@ -79,6 +83,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -91,6 +96,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -98,6 +104,9 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
 import com.example.model.CanvasElement
@@ -107,10 +116,14 @@ import com.example.model.ExportFormat
 import com.example.model.PalmRejectionMode
 import com.example.model.PalmRejectionPolicy
 import com.example.model.ShapeKind
+import com.example.model.StylusCustomBinding
+import com.example.model.StylusHardwareSignal
 import com.example.ui.theme.HighlighterSwatches
 import com.example.ui.theme.InkSwatches
 import com.example.viewmodel.CanvasViewModel
+import com.example.viewmodel.ToolSwitchCue
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -120,13 +133,85 @@ fun CanvasWorkspaceScreen(
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val hostView = LocalView.current
+    val stylusBridge = LocalStylusHardwareBridge.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showRenameDialog by remember { mutableStateOf(false) }
+    var showCalibrationDialog by remember { mutableStateOf(false) }
+    var capturedCalibrationSignal by remember { mutableStateOf<StylusHardwareSignal?>(null) }
+    var visibleToolCue by remember { mutableStateOf<ToolSwitchCue?>(null) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     LaunchedEffect(boardId) {
         viewModel.loadBoard(boardId)
+    }
+
+    // Wire hardware stylus shortcut bridge while workspace is open
+    DisposableEffect(stylusBridge) {
+        stylusBridge?.isCanvasActive = true
+        stylusBridge?.onTogglePenEraser = {
+            viewModel.togglePenAndEraserFromStylus()
+        }
+        stylusBridge?.onCalibrationCaptured = { signal ->
+            capturedCalibrationSignal = signal
+            hostView.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        }
+        onDispose {
+            stylusBridge?.isCanvasActive = false
+            stylusBridge?.isModalOpen = false
+            stylusBridge?.isCalibrationMode = false
+            stylusBridge?.onTogglePenEraser = null
+            stylusBridge?.onCalibrationCaptured = null
+        }
+    }
+
+    val isAnyModalOpen = showRenameDialog ||
+        showCalibrationDialog ||
+        state.textEditorDraft != null ||
+        state.croppingImageElement != null ||
+        state.isExportSheetOpen
+
+    LaunchedEffect(stylusBridge, isAnyModalOpen, showCalibrationDialog, state.customStylusBinding) {
+        stylusBridge?.isModalOpen = isAnyModalOpen
+        stylusBridge?.isCalibrationMode = showCalibrationDialog
+        stylusBridge?.customBinding = state.customStylusBinding
+    }
+
+    // Subtle haptic feedback + auto-dismissing floating indicator pill on stylus shortcut switch
+    LaunchedEffect(state.toolSwitchCue?.eventId) {
+        val cue = state.toolSwitchCue ?: return@LaunchedEffect
+        visibleToolCue = cue
+        hostView.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        if (!cue.isTemporary) {
+            delay(1150L)
+            if (visibleToolCue?.eventId == cue.eventId) {
+                visibleToolCue = null
+            }
+        }
+    }
+
+    LaunchedEffect(state.isTemporaryEraserActive) {
+        if (!state.isTemporaryEraserActive && visibleToolCue?.isTemporary == true) {
+            delay(280L)
+            if (!state.isTemporaryEraserActive && visibleToolCue?.isTemporary == true) {
+                visibleToolCue = null
+            }
+        }
+    }
+
+    DisposableEffect(lifecycleOwner, boardId) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                viewModel.flushPendingSaveAsync()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     BackHandler {
@@ -230,6 +315,11 @@ fun CanvasWorkspaceScreen(
                     }
                 }
             },
+            isStylusButtonHeldProvider = { stylusBridge?.isStylusButtonHeld == true },
+            onTemporaryEraserChange = viewModel::setTemporaryEraserFromStylus,
+            onStylusTouchStateChange = { touching ->
+                stylusBridge?.notifyStylusTouchActive(touching)
+            },
             modifier = Modifier.fillMaxSize()
         )
 
@@ -256,6 +346,7 @@ fun CanvasWorkspaceScreen(
                     canRedo = state.canRedo,
                     palmRejectionMode = state.palmRejectionMode,
                     isStylusSessionActive = state.isStylusSessionActive,
+                    customStylusBinding = state.customStylusBinding,
                     isWideTablet = isWideTablet,
                     onBack = { viewModel.flushAndExit(onNavigateBack) },
                     onTitleClick = { showRenameDialog = true },
@@ -278,6 +369,10 @@ fun CanvasWorkspaceScreen(
                         scope.launch {
                             snackbarHostState.showSnackbar(context.getString(msgRes))
                         }
+                    },
+                    onOpenStylusCalibration = {
+                        capturedCalibrationSignal = null
+                        showCalibrationDialog = true
                     },
                     onOpenExport = { viewModel.openExportSheet(context) }
                 )
@@ -330,6 +425,17 @@ fun CanvasWorkspaceScreen(
                         )
                     }
                 }
+
+                // Brief Floating Capsule Indicator on Stylus Shortcut Switch / Hold-to-Erase
+                AnimatedVisibility(
+                    visible = visibleToolCue != null,
+                    enter = fadeIn() + scaleIn(initialScale = 0.92f),
+                    exit = fadeOut() + scaleOut(targetScale = 0.95f)
+                ) {
+                    visibleToolCue?.let { cue ->
+                        StylusShortcutCuePill(cue = cue)
+                    }
+                }
             }
         }
 
@@ -373,6 +479,37 @@ fun CanvasWorkspaceScreen(
                 .windowInsetsPadding(WindowInsets.navigationBars)
                 .padding(bottom = 64.dp)
         )
+
+        if (showCalibrationDialog) {
+            StylusCalibrationDialog(
+                currentBinding = state.customStylusBinding,
+                capturedSignal = capturedCalibrationSignal,
+                onSaveCaptured = { binding ->
+                    viewModel.saveCustomStylusBinding(binding)
+                    showCalibrationDialog = false
+                    capturedCalibrationSignal = null
+                    scope.launch {
+                        snackbarHostState.showSnackbar(
+                            context.getString(R.string.stylus_calibrate_saved_snackbar, binding.label)
+                        )
+                    }
+                },
+                onResetDefault = {
+                    viewModel.clearCustomStylusBinding()
+                    showCalibrationDialog = false
+                    capturedCalibrationSignal = null
+                    scope.launch {
+                        snackbarHostState.showSnackbar(
+                            context.getString(R.string.stylus_calibrate_reset_snackbar)
+                        )
+                    }
+                },
+                onDismiss = {
+                    showCalibrationDialog = false
+                    capturedCalibrationSignal = null
+                }
+            )
+        }
     }
 
     if (showRenameDialog) {
@@ -480,6 +617,7 @@ private fun UnifiedTopWorkspaceBar(
     canRedo: Boolean,
     palmRejectionMode: PalmRejectionMode,
     isStylusSessionActive: Boolean,
+    customStylusBinding: StylusCustomBinding,
     isWideTablet: Boolean,
     onBack: () -> Unit,
     onTitleClick: () -> Unit,
@@ -489,6 +627,7 @@ private fun UnifiedTopWorkspaceBar(
     onRedo: () -> Unit,
     onCyclePattern: () -> Unit,
     onSelectPalmMode: (PalmRejectionMode) -> Unit,
+    onOpenStylusCalibration: () -> Unit,
     onOpenExport: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -559,10 +698,12 @@ private fun UnifiedTopWorkspaceBar(
                     canRedo = canRedo,
                     palmRejectionMode = palmRejectionMode,
                     isStylusSessionActive = isStylusSessionActive,
+                    customStylusBinding = customStylusBinding,
                     onUndo = onUndo,
                     onRedo = onRedo,
                     onCyclePattern = onCyclePattern,
                     onSelectPalmMode = onSelectPalmMode,
+                    onOpenStylusCalibration = onOpenStylusCalibration,
                     onOpenExport = onOpenExport
                 )
             }
@@ -597,10 +738,12 @@ private fun UnifiedTopWorkspaceBar(
                         canRedo = canRedo,
                         palmRejectionMode = palmRejectionMode,
                         isStylusSessionActive = isStylusSessionActive,
+                        customStylusBinding = customStylusBinding,
                         onUndo = onUndo,
                         onRedo = onRedo,
                         onCyclePattern = onCyclePattern,
                         onSelectPalmMode = onSelectPalmMode,
+                        onOpenStylusCalibration = onOpenStylusCalibration,
                         onOpenExport = onOpenExport
                     )
                 }
@@ -666,10 +809,12 @@ private fun WorkspaceUtilityActions(
     canRedo: Boolean,
     palmRejectionMode: PalmRejectionMode,
     isStylusSessionActive: Boolean,
+    customStylusBinding: StylusCustomBinding,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     onCyclePattern: () -> Unit,
     onSelectPalmMode: (PalmRejectionMode) -> Unit,
+    onOpenStylusCalibration: () -> Unit,
     onOpenExport: () -> Unit
 ) {
     var palmMenuExpanded by remember { mutableStateOf(false) }
@@ -792,6 +937,42 @@ private fun WorkspaceUtilityActions(
                     },
                     testTag = "palm_mode_off_item"
                 )
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                DropdownMenuItem(
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = stringResource(R.string.stylus_calibrate_menu_title),
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            Text(
+                                text = if (customStylusBinding.isConfigured) {
+                                    stringResource(
+                                        R.string.stylus_calibrate_menu_custom,
+                                        customStylusBinding.label.ifBlank { "key=${customStylusBinding.keyCode}" }
+                                    )
+                                } else {
+                                    stringResource(R.string.stylus_calibrate_menu_default)
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    },
+                    onClick = {
+                        palmMenuExpanded = false
+                        onOpenStylusCalibration()
+                    },
+                    modifier = Modifier.testTag("stylus_calibrate_menu_item")
+                )
             }
         }
 
@@ -815,6 +996,42 @@ private fun WorkspaceUtilityActions(
             Spacer(modifier = Modifier.width(6.dp))
             Text(
                 text = stringResource(R.string.export_button_label),
+                style = MaterialTheme.typography.labelLarge
+            )
+        }
+    }
+}
+
+@Composable
+private fun StylusShortcutCuePill(
+    cue: ToolSwitchCue
+) {
+    val (icon, labelRes) = when {
+        cue.isTemporary -> Icons.Default.AutoFixNormal to R.string.stylus_cue_temp_eraser
+        cue.tool == CanvasTool.ERASER -> Icons.Default.AutoFixNormal to R.string.stylus_cue_eraser
+        cue.tool == CanvasTool.HIGHLIGHTER -> Icons.Default.BorderColor to R.string.stylus_cue_highlighter
+        else -> Icons.Default.Draw to R.string.stylus_cue_pen
+    }
+
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.94f),
+        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+        shadowElevation = 6.dp,
+        modifier = Modifier.testTag("stylus_shortcut_cue_pill")
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp)
+            )
+            Text(
+                text = stringResource(labelRes),
                 style = MaterialTheme.typography.labelLarge
             )
         }

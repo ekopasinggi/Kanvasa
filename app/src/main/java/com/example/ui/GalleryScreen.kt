@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.text.format.DateUtils
+import android.view.inputmethod.EditorInfo
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -56,6 +57,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -72,10 +74,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
-import com.example.data.NoteBoardEntity
+import com.example.data.NoteBoardSummary
 import com.example.model.CanvasElement
 import com.example.model.CanvasPattern
-import com.example.model.CanvasSerializer
 import com.example.viewmodel.GalleryViewModel
 
 @Composable
@@ -85,8 +86,8 @@ fun GalleryScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showCreateDialog by remember { mutableStateOf(false) }
-    var boardToRename by remember { mutableStateOf<NoteBoardEntity?>(null) }
-    var boardToDelete by remember { mutableStateOf<NoteBoardEntity?>(null) }
+    var boardToRename by remember { mutableStateOf<NoteBoardSummary?>(null) }
+    var boardToDelete by remember { mutableStateOf<NoteBoardSummary?>(null) }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -159,6 +160,7 @@ fun GalleryScreen(
                     ) { board ->
                         NoteBoardCard(
                             board = board,
+                            loadPreview = { viewModel.loadPreviewElements(board) },
                             onClick = { onOpenBoard(board.id) },
                             onRenameClick = { boardToRename = board },
                             onDeleteClick = { boardToDelete = board }
@@ -270,18 +272,25 @@ private fun GalleryHeaderSection(
         }
 
         if (showSearch) {
-            OutlinedTextField(
+            StylusFormField(
                 value = searchQuery,
                 onValueChange = onSearchChange,
-                placeholder = { Text(stringResource(R.string.search_boards_placeholder)) },
+                placeholder = stringResource(R.string.search_boards_placeholder),
+                singleLine = true,
+                minHeight = 54.dp,
+                imeAction = EditorInfo.IME_ACTION_SEARCH,
+                shape = RoundedCornerShape(16.dp),
+                containerColor = MaterialTheme.colorScheme.surface,
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Search,
-                        contentDescription = null
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 6.dp)
                     )
                 },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
+                trailingIcon = if (searchQuery.isNotEmpty()) {
+                    {
                         IconButton(onClick = { onSearchChange("") }) {
                             Icon(
                                 imageVector = Icons.Default.Clear,
@@ -289,14 +298,9 @@ private fun GalleryHeaderSection(
                             )
                         }
                     }
+                } else {
+                    null
                 },
-                singleLine = true,
-                shape = RoundedCornerShape(16.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                    focusedContainerColor = MaterialTheme.colorScheme.surface,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("search_boards_input")
@@ -396,15 +400,20 @@ private fun NoSearchResultsBox() {
 
 @Composable
 private fun NoteBoardCard(
-    board: NoteBoardEntity,
+    board: NoteBoardSummary,
+    loadPreview: suspend () -> List<CanvasElement>,
     onClick: () -> Unit,
     onRenameClick: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val pattern = remember(board.patternName) { CanvasPattern.fromName(board.patternName) }
-    val previewElements = remember(board.elementsJson) {
-        CanvasSerializer.decode(board.elementsJson).take(25)
+    val previewElements by produceState<List<CanvasElement>>(
+        initialValue = emptyList(),
+        key1 = board.id,
+        key2 = board.updatedAt
+    ) {
+        value = loadPreview()
     }
     val relativeTime = remember(board.updatedAt) {
         DateUtils.getRelativeTimeSpanString(
